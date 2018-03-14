@@ -34,7 +34,6 @@ func TestTree(t *testing.T) {
 	})
 
 	o.Spec("it maintains a required binary tree structure", func(t TT) {
-		t.Skip()
 		for i := int64(1); i < 10; i++ {
 			t.bt.Insert(i, fmt.Sprintf("%d", i))
 		}

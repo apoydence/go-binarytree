@@ -107,13 +107,8 @@ func (t *BinaryTree) balance(x, y, z *Node) *Node {
 			// Left Left
 			// Right rotate (z)
 
-			z = &Node{
-				Key:    z.Key,
-				Value:  z.Value,
-				height: z.height,
-				left:   y.right,
-				right:  z.right,
-			}
+			// z is passed in as a copy
+			z.left = y.right
 
 			y = &Node{
 				Key:    y.Key,
@@ -122,9 +117,6 @@ func (t *BinaryTree) balance(x, y, z *Node) *Node {
 				left:   y.left,
 				right:  z,
 			}
-
-			// z.left = y.right
-			// y.right = z
 
 			z.height = t.findNodeHeight(z)
 			y.height = t.findNodeHeight(y)
@@ -150,23 +142,13 @@ func (t *BinaryTree) balance(x, y, z *Node) *Node {
 			right:  x.right,
 		}
 
-		// y.right = x.left
-		// x.left = y
-
 		// Right Rotate (z)
 
-		z = &Node{
-			Key:    z.Key,
-			Value:  z.Value,
-			height: z.height,
-			left:   x.right,
-			right:  z.right,
-		}
+		// z is passed in as a copy
+		z.left = x.right
 
 		// x is already a copy
 		x.right = z
-
-		// z.left = x.right
 
 		y.height = t.findNodeHeight(y)
 		z.height = t.findNodeHeight(z)
@@ -180,13 +162,8 @@ func (t *BinaryTree) balance(x, y, z *Node) *Node {
 			// Right Right
 			// Left Rotate (z)
 
-			z = &Node{
-				Key:    z.Key,
-				Value:  z.Value,
-				height: z.height,
-				left:   z.left,
-				right:  y.left,
-			}
+			// z is passed in as a copy
+			z.right = y.left
 
 			y = &Node{
 				Key:    y.Key,
@@ -195,9 +172,6 @@ func (t *BinaryTree) balance(x, y, z *Node) *Node {
 				left:   z,
 				right:  y.right,
 			}
-
-			// z.right = y.left
-			// y.left = z
 
 			z.height = t.findNodeHeight(z)
 			y.height = t.findNodeHeight(y)
@@ -223,20 +197,10 @@ func (t *BinaryTree) balance(x, y, z *Node) *Node {
 			right:  y,
 		}
 
-		// y.left = x.right
-		// x.right = y
-
 		// Left Rotate (z)
 
-		z = &Node{
-			Key:    z.Key,
-			Value:  z.Value,
-			height: z.height,
-			left:   z.left,
-			right:  x.left,
-		}
-
-		// z.right = x.left
+		// z is passed in as a copy
+		z.right = x.left
 
 		// x is already a copy
 		x.left = z
