@@ -1,10 +1,15 @@
 package tree
 
+import (
+	"sync/atomic"
+	"unsafe"
+)
+
 // BinaryTree is a self balancing AVL tree.
 type BinaryTree struct {
-	root *Node
+	root unsafe.Pointer
 
-	added int
+	added int64
 }
 
 // Node stores a tree's vertice.
@@ -37,17 +42,20 @@ func New() *BinaryTree {
 // Root returns the tree's root node. If the tree is empty, it will return
 // nil.
 func (t *BinaryTree) Root() *Node {
-	return t.root
+	return (*Node)(atomic.LoadPointer(&t.root))
 }
 
-// Insert adds an entry to the BinaryTree.
+// Insert adds an entry to the BinaryTree. This can only be called by a single
+// go-routine. However many go-routines can be reading while Insert is being
+// called. Therefore it is a single producer, many consumer.
 func (t *BinaryTree) Insert(key int64, value interface{}) {
-	t.root, _, _ = t.insert(key, value, t.root)
+	r, _, _ := t.insert(key, value, (*Node)(t.root))
+	atomic.StorePointer(&t.root, unsafe.Pointer(r))
 }
 
 func (t *BinaryTree) insert(key int64, value interface{}, n *Node) (*Node, *Node, bool) {
 	if n == nil {
-		t.added++
+		atomic.AddInt64(&t.added, 1)
 		return &Node{Key: key, Value: value, height: 1}, nil, true
 	}
 
@@ -61,8 +69,8 @@ func (t *BinaryTree) insert(key int64, value interface{}, n *Node) (*Node, *Node
 			right:  n.right,
 		}
 
-		nn := t.balance(x, left, n)
-		return nn, left, ok
+		n = t.balance(x, left, n)
+		return n, left, ok
 	}
 
 	if key > n.Key {
@@ -76,8 +84,8 @@ func (t *BinaryTree) insert(key int64, value interface{}, n *Node) (*Node, *Node
 			right:  right,
 		}
 
-		nn := t.balance(x, right, n)
-		return nn, right, ok
+		n = t.balance(x, right, n)
+		return n, right, ok
 	}
 
 	return &Node{
@@ -99,26 +107,70 @@ func (t *BinaryTree) balance(x, y, z *Node) *Node {
 			// Left Left
 			// Right rotate (z)
 
-			z.left = y.right
-			y.right = z
+			z = &Node{
+				Key:    z.Key,
+				Value:  z.Value,
+				height: z.height,
+				left:   y.right,
+				right:  z.right,
+			}
 
-			z.height = t.findHeight(z.left, z.right)
-			y.height = t.findHeight(y.left, y.right)
+			y = &Node{
+				Key:    y.Key,
+				Value:  y.Value,
+				height: y.height,
+				left:   y.left,
+				right:  z,
+			}
+
+			// z.left = y.right
+			// y.right = z
+
+			z.height = t.findNodeHeight(z)
+			y.height = t.findNodeHeight(y)
 			return y
 		}
 
 		// Left Right
 		// Left Rotate (y)
-		y.right = x.left
-		x.left = y
+
+		y = &Node{
+			Key:    y.Key,
+			Value:  y.Value,
+			height: y.height,
+			left:   y.left,
+			right:  x.left,
+		}
+
+		x = &Node{
+			Key:    x.Key,
+			Value:  x.Value,
+			height: x.height,
+			left:   y,
+			right:  x.right,
+		}
+
+		// y.right = x.left
+		// x.left = y
 
 		// Right Rotate (z)
-		z.left = x.right
+
+		z = &Node{
+			Key:    z.Key,
+			Value:  z.Value,
+			height: z.height,
+			left:   x.right,
+			right:  z.right,
+		}
+
+		// x is already a copy
 		x.right = z
 
-		y.height = t.findHeight(y.left, y.right)
-		z.height = t.findHeight(z.left, z.right)
-		x.height = t.findHeight(x.left, x.right)
+		// z.left = x.right
+
+		y.height = t.findNodeHeight(y)
+		z.height = t.findNodeHeight(z)
+		x.height = t.findNodeHeight(x)
 		return x
 	}
 
@@ -128,26 +180,70 @@ func (t *BinaryTree) balance(x, y, z *Node) *Node {
 			// Right Right
 			// Left Rotate (z)
 
-			z.right = y.left
-			y.left = z
+			z = &Node{
+				Key:    z.Key,
+				Value:  z.Value,
+				height: z.height,
+				left:   z.left,
+				right:  y.left,
+			}
 
-			z.height = t.findHeight(z.left, z.right)
-			y.height = t.findHeight(y.left, y.right)
+			y = &Node{
+				Key:    y.Key,
+				Value:  y.Value,
+				height: y.height,
+				left:   z,
+				right:  y.right,
+			}
+
+			// z.right = y.left
+			// y.left = z
+
+			z.height = t.findNodeHeight(z)
+			y.height = t.findNodeHeight(y)
 			return y
 		}
 
 		// Right Left
 		// Right Rotate (y)
-		y.left = x.right
-		x.right = y
+
+		y = &Node{
+			Key:    y.Key,
+			Value:  y.Value,
+			height: y.height,
+			left:   x.right,
+			right:  y.right,
+		}
+
+		x = &Node{
+			Key:    x.Key,
+			Value:  x.Value,
+			height: x.height,
+			left:   x.left,
+			right:  y,
+		}
+
+		// y.left = x.right
+		// x.right = y
 
 		// Left Rotate (z)
-		z.right = x.left
+
+		z = &Node{
+			Key:    z.Key,
+			Value:  z.Value,
+			height: z.height,
+			left:   z.left,
+			right:  x.left,
+		}
+
+		// z.right = x.left
+
+		// x is already a copy
 		x.left = z
 
-		y.height = t.findHeight(y.left, y.right)
-		z.height = t.findHeight(z.left, z.right)
-		x.height = t.findHeight(x.left, x.right)
+		y.height = t.findNodeHeight(y)
+		z.height = t.findNodeHeight(z)
+		x.height = t.findNodeHeight(x)
 		return x
 	}
 
@@ -157,7 +253,7 @@ func (t *BinaryTree) balance(x, y, z *Node) *Node {
 
 // Size returns the number of entries the tree is currently storing.
 func (t *BinaryTree) Size() int {
-	return t.added
+	return int(atomic.LoadInt64(&t.added))
 }
 
 func (t *BinaryTree) findNodeHeight(n *Node) int {
@@ -205,7 +301,7 @@ func Traverse(n *Node, f func(key int64, value interface{}) (keepGoing bool)) bo
 	return true
 }
 
-// HeightFrom measures the height from the given key.
+// HeightFrom measures the height from the given key via traversing.
 func HeightFrom(key int64, n *Node) int {
 	return heightFrom(key, 0, n)
 }

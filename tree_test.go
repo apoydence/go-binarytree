@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"sort"
 	"testing"
 	"time"
 
@@ -166,11 +167,64 @@ func TestTree(t *testing.T) {
 
 	o.Spec("fuzz", func(t TT) {
 		rand.Seed(time.Now().UnixNano())
-		for i := int64(0); i < 100000; i++ {
-			t.bt.Insert(i, "")
-			h := tree.HeightFrom(i, t.bt.Root())
-			x := int(math.Floor(math.Log2(float64(i + 1))))
-			Expect(t, x-h).To(BeBelow(2))
+		for i := int64(0); i < 1000; i++ {
+			value := rand.Int63()
+			t.bt.Insert(value, "")
+
+			perfectHeight := int(math.Ceil(math.Log2(float64(i+2))) - 1)
+			h := tree.HeightFrom(value, t.bt.Root())
+
+			// We'll allow for some wiggle room.
+			Expect(t, h-perfectHeight).To(BeBelow(5))
+
+			var keys []int64
+			tree.Traverse(t.bt.Root(), func(key int64, value interface{}) bool {
+				keys = append(keys, key)
+				return true
+			})
+
+			Expect(t, sort.IsSorted(ints(keys))).To(BeTrue())
 		}
 	})
+
+	o.Spec("it survives the race detector", func(t TT) {
+		go func() {
+			for i := int64(0); i < 10000; i++ {
+				t.bt.Insert(i, fmt.Sprintf("%d", i))
+			}
+		}()
+
+		var result []int64
+		Expect(t, func() []int64 {
+			var keys []int64
+			tree.Traverse(t.bt.Root(), func(key int64, value interface{}) bool {
+				// Access and throw away
+				t.bt.Size()
+
+				keys = append(keys, key)
+				return true
+			})
+			return keys
+		}).To(ViaPolling(Chain(HaveLen(10000), Fetch(&result))))
+
+		for i := int64(0); i < 10000; i++ {
+			Expect(t, result[int(i)]).To(Equal(i))
+		}
+	})
+}
+
+type ints []int64
+
+func (i ints) Len() int {
+	return len(i)
+}
+
+func (i ints) Less(a, b int) bool {
+	return i[a] < i[b]
+}
+
+func (i ints) Swap(a, b int) {
+	t := i[a]
+	i[a] = i[b]
+	i[b] = t
 }
