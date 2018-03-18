@@ -34,32 +34,58 @@ func TestTree(t *testing.T) {
 	})
 
 	o.Spec("it maintains a required binary tree structure", func(t TT) {
-		for i := int64(1); i < 10; i++ {
+		values := []int64{7, 0, 5, 1, 9, 2, 6, 12, 11, 3, 8, 13, 10, 4}
+
+		for i, x := range values {
+			t.bt.Insert(x, fmt.Sprintf("%d", i))
+			if i%10 == 0 {
+				t.bt.DropLeft()
+			}
+
+			var keys []int64
+			tree.Traverse(t.bt.Root(), func(key int64, value interface{}) bool {
+				keys = append(keys, key)
+				return true
+			})
+
+			Expect(t, sort.IsSorted(ints(keys))).To(BeTrue())
+		}
+
+		var keys []int64
+		tree.Traverse(t.bt.Root(), func(key int64, value interface{}) bool {
+			keys = append(keys, key)
+			return true
+		})
+
+		Expect(t, sort.IsSorted(ints(keys))).To(BeTrue())
+	})
+
+	o.Spec("drops the left node and keeps the right", func(t TT) {
+		//        5
+		//      /   \
+		//     3     6
+		//    / \
+		//   2   4
+		for _, i := range []int64{5, 3, 6, 4, 2} {
 			t.bt.Insert(i, fmt.Sprintf("%d", i))
 		}
 
-		// Insert 0 out of order
-		t.bt.Insert(0, "0")
+		t.bt.DropLeft()
 
-		// Replace key 5
-		t.bt.Insert(5, "99")
-
-		Expect(t, t.bt.Size()).To(Equal(10))
+		Expect(t, t.bt.Stats()).To(Equal(tree.Stat{
+			Added:   5,
+			Dropped: 1,
+			Size:    4,
+		}))
 
 		var keys []int64
-		var values []interface{}
 		tree.Traverse(t.bt.Root(), func(key int64, value interface{}) bool {
 			keys = append(keys, key)
-			values = append(values, value)
 			return true
 		})
 
 		Expect(t, keys).To(Equal([]int64{
-			0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
-		}))
-
-		Expect(t, values).To(Equal([]interface{}{
-			"0", "1", "2", "3", "4", "99", "6", "7", "8", "9",
+			3, 4, 5, 6,
 		}))
 	})
 
@@ -85,8 +111,18 @@ func TestTree(t *testing.T) {
 			t.bt.Insert(i, fmt.Sprintf("%d", i))
 		}
 
-		Expect(t, t.bt.Size()).To(Equal(6))
-		Expect(t, tree.HeightFrom(11, t.bt.Root())).To(Equal(3))
+		Expect(t, t.bt.Stats().Size).To(Equal(6))
+		Expect(t, tree.HeightFrom(1, t.bt.Root())).To(Equal(3))
+
+		var keys []int64
+		tree.Traverse(t.bt.Root(), func(key int64, value interface{}) bool {
+			keys = append(keys, key)
+			return true
+		})
+
+		Expect(t, keys).To(Equal([]int64{
+			1, 4, 7, 8, 9, 11,
+		}))
 	})
 
 	o.Spec("it balances for Left Right", func(t TT) {
@@ -98,20 +134,30 @@ func TestTree(t *testing.T) {
 		//     / \                        / \
 		//   T2   T3                    T1   T2
 
-		//       11
-		//      /   \
-		//     7     12
-		//    / \
-		//   4   9
-		//        \
-		//         10
+		//       11                            11                           8
+		//      /   \                         /  \                         / \
+		//     7     12                      8   12                       7   11
+		//    / \                           /  \                         /   /  \
+		//   4   8                         7   10                       4   10  12
+		//        \                       /
+		//         10                    4
 
 		for _, i := range []int64{11, 7, 12, 4, 8, 10} {
 			t.bt.Insert(i, fmt.Sprintf("%d", i))
 		}
 
-		Expect(t, t.bt.Size()).To(Equal(6))
+		Expect(t, t.bt.Stats().Size).To(Equal(6))
 		Expect(t, tree.HeightFrom(12, t.bt.Root())).To(Equal(3))
+
+		var keys []int64
+		tree.Traverse(t.bt.Root(), func(key int64, value interface{}) bool {
+			keys = append(keys, key)
+			return true
+		})
+
+		Expect(t, keys).To(Equal([]int64{
+			4, 7, 8, 10, 11, 12,
+		}))
 	})
 
 	o.Spec("it balances for Right Right", func(t TT) {
@@ -135,8 +181,18 @@ func TestTree(t *testing.T) {
 			t.bt.Insert(i, fmt.Sprintf("%d", i))
 		}
 
-		Expect(t, t.bt.Size()).To(Equal(6))
+		Expect(t, t.bt.Stats().Size).To(Equal(6))
 		Expect(t, tree.HeightFrom(15, t.bt.Root())).To(Equal(3))
+
+		var keys []int64
+		tree.Traverse(t.bt.Root(), func(key int64, value interface{}) bool {
+			keys = append(keys, key)
+			return true
+		})
+
+		Expect(t, keys).To(Equal([]int64{
+			4, 5, 11, 12, 14, 15,
+		}))
 	})
 
 	o.Spec("it balances for Right Left", func(t TT) {
@@ -160,17 +216,34 @@ func TestTree(t *testing.T) {
 			t.bt.Insert(i, fmt.Sprintf("%d", i))
 		}
 
-		Expect(t, t.bt.Size()).To(Equal(6))
+		Expect(t, t.bt.Stats().Size).To(Equal(6))
 		Expect(t, tree.HeightFrom(15, t.bt.Root())).To(Equal(3))
+
+		var keys []int64
+		tree.Traverse(t.bt.Root(), func(key int64, value interface{}) bool {
+			keys = append(keys, key)
+			return true
+		})
+
+		Expect(t, keys).To(Equal([]int64{
+			4, 5, 11, 12, 14, 15,
+		}))
 	})
 
 	o.Spec("fuzz", func(t TT) {
 		rand.Seed(time.Now().UnixNano())
+
+		var j int64
 		for i := int64(0); i < 1000; i++ {
 			value := rand.Int63()
 			t.bt.Insert(value, "")
 
-			perfectHeight := int(math.Ceil(math.Log2(float64(i+2))) - 1)
+			if i%10 == 0 {
+				t.bt.DropLeft()
+				j++
+			}
+
+			perfectHeight := int(math.Ceil(math.Log2(float64(i-j+2))) - 1)
 			h := tree.HeightFrom(value, t.bt.Root())
 
 			// We'll allow for some wiggle room.
@@ -190,6 +263,10 @@ func TestTree(t *testing.T) {
 		go func() {
 			for i := int64(0); i < 10000; i++ {
 				t.bt.Insert(i, fmt.Sprintf("%d", i))
+
+				if i%10 == 0 {
+					t.bt.DropLeft()
+				}
 			}
 		}()
 
@@ -198,16 +275,17 @@ func TestTree(t *testing.T) {
 			var keys []int64
 			tree.Traverse(t.bt.Root(), func(key int64, value interface{}) bool {
 				// Access and throw away
-				t.bt.Size()
+				t.bt.Stats()
 
 				keys = append(keys, key)
 				return true
 			})
 			return keys
-		}).To(ViaPolling(Chain(HaveLen(10000), Fetch(&result))))
+		}).To(ViaPolling(Chain(HaveLen(9000), Fetch(&result))))
 
-		for i := int64(0); i < 10000; i++ {
-			Expect(t, result[int(i)]).To(Equal(i))
+		// First 1000 have been pruned
+		for i := int64(1000); i < 10000; i++ {
+			Expect(t, result[int(i)-1000]).To(Equal(i))
 		}
 	})
 }

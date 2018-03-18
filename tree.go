@@ -9,7 +9,8 @@ import (
 type BinaryTree struct {
 	root unsafe.Pointer
 
-	added int64
+	// Stat object
+	stats unsafe.Pointer
 }
 
 // Node stores a tree's vertice.
@@ -36,7 +37,11 @@ func (n *Node) Right() *Node {
 
 // New returns a new BinaryTree.
 func New() *BinaryTree {
-	return &BinaryTree{}
+	var s Stat
+
+	return &BinaryTree{
+		stats: unsafe.Pointer(&s),
+	}
 }
 
 // Root returns the tree's root node. If the tree is empty, it will return
@@ -45,47 +50,62 @@ func (t *BinaryTree) Root() *Node {
 	return (*Node)(atomic.LoadPointer(&t.root))
 }
 
+// Stat is the result of calling the Stats method.
+type Stat struct {
+	Added   int
+	Dropped int
+	Size    int
+}
+
+// Stats returns the current stats of the tree.
+func (t *BinaryTree) Stats() Stat {
+	s := *(*Stat)(atomic.LoadPointer(&t.stats))
+	s.Size = s.Added - s.Dropped
+	return s
+}
+
 // Insert adds an entry to the BinaryTree. This can only be called by a single
 // go-routine. However many go-routines can be reading while Insert is being
 // called. Therefore it is a single producer, many consumer.
 func (t *BinaryTree) Insert(key int64, value interface{}) {
-	r, _, _ := t.insert(key, value, (*Node)(t.root))
+	r := t.insert(key, value, (*Node)(t.root))
 	atomic.StorePointer(&t.root, unsafe.Pointer(r))
 }
 
-func (t *BinaryTree) insert(key int64, value interface{}, n *Node) (*Node, *Node, bool) {
+func (t *BinaryTree) insert(key int64, value interface{}, n *Node) *Node {
 	if n == nil {
-		atomic.AddInt64(&t.added, 1)
-		return &Node{Key: key, Value: value, height: 1}, nil, true
+		s := *(*Stat)(atomic.LoadPointer(&t.stats))
+		s.Added++
+		atomic.StorePointer(&t.stats, unsafe.Pointer(&s))
+		return &Node{Key: key, Value: value, height: 1}
 	}
 
 	if key < n.Key {
-		left, x, ok := t.insert(key, value, n.left)
+		left := t.insert(key, value, n.left)
 		n = &Node{
-			Key:    n.Key,
-			Value:  n.Value,
-			height: t.findHeight(left, n.right),
-			left:   left,
-			right:  n.right,
+			Key:   n.Key,
+			Value: n.Value,
+			left:  left,
+			right: n.right,
 		}
 
-		n = t.balance(x, left, n)
-		return n, left, ok
+		n.height = t.findHeight(n.left, n.right)
+
+		return t.balance(n, key)
 	}
 
 	if key > n.Key {
-		right, x, ok := t.insert(key, value, n.right)
+		right := t.insert(key, value, n.right)
 
 		n = &Node{
-			Key:    n.Key,
-			Value:  n.Value,
-			height: t.findHeight(n.left, right),
-			left:   n.left,
-			right:  right,
+			Key:   n.Key,
+			Value: n.Value,
+			left:  n.left,
+			right: right,
 		}
+		n.height = t.findHeight(n.left, n.right)
 
-		n = t.balance(x, right, n)
-		return n, right, ok
+		return t.balance(n, key)
 	}
 
 	return &Node{
@@ -94,130 +114,126 @@ func (t *BinaryTree) insert(key int64, value interface{}, n *Node) (*Node, *Node
 		left:   n.left,
 		right:  n.right,
 		height: n.height,
-	}, nil, false
+	}
 }
 
-func (t *BinaryTree) balance(x, y, z *Node) *Node {
-	hl := t.findNodeHeight(z.left)
-	hr := t.findNodeHeight(z.right)
+func (t *BinaryTree) rightRotate(y *Node) *Node {
+	x := y.left
+	t2 := x.right
 
-	if hr-hl < -1 {
-		// Left
-		if x == y.left {
-			// Left Left
-			// Right rotate (z)
-
-			// z is passed in as a copy
-			z.left = y.right
-
-			y = &Node{
-				Key:    y.Key,
-				Value:  y.Value,
-				height: y.height,
-				left:   y.left,
-				right:  z,
-			}
-
-			z.height = t.findNodeHeight(z)
-			y.height = t.findNodeHeight(y)
-			return y
-		}
-
-		// Left Right
-		// Left Rotate (y)
-
-		y = &Node{
-			Key:    y.Key,
-			Value:  y.Value,
-			height: y.height,
-			left:   y.left,
-			right:  x.left,
-		}
-
-		x = &Node{
-			Key:    x.Key,
-			Value:  x.Value,
-			height: x.height,
-			left:   y,
-			right:  x.right,
-		}
-
-		// Right Rotate (z)
-
-		// z is passed in as a copy
-		z.left = x.right
-
-		// x is already a copy
-		x.right = z
-
-		y.height = t.findNodeHeight(y)
-		z.height = t.findNodeHeight(z)
-		x.height = t.findNodeHeight(x)
-		return x
+	y = &Node{
+		Key:   y.Key,
+		Value: y.Value,
+		left:  t2,
+		right: y.right,
 	}
 
-	if hr-hl > 1 {
-		// Right
-		if x == y.right {
-			// Right Right
-			// Left Rotate (z)
-
-			// z is passed in as a copy
-			z.right = y.left
-
-			y = &Node{
-				Key:    y.Key,
-				Value:  y.Value,
-				height: y.height,
-				left:   z,
-				right:  y.right,
-			}
-
-			z.height = t.findNodeHeight(z)
-			y.height = t.findNodeHeight(y)
-			return y
-		}
-
-		// Right Left
-		// Right Rotate (y)
-
-		y = &Node{
-			Key:    y.Key,
-			Value:  y.Value,
-			height: y.height,
-			left:   x.right,
-			right:  y.right,
-		}
-
-		x = &Node{
-			Key:    x.Key,
-			Value:  x.Value,
-			height: x.height,
-			left:   x.left,
-			right:  y,
-		}
-
-		// Left Rotate (z)
-
-		// z is passed in as a copy
-		z.right = x.left
-
-		// x is already a copy
-		x.left = z
-
-		y.height = t.findNodeHeight(y)
-		z.height = t.findNodeHeight(z)
-		x.height = t.findNodeHeight(x)
-		return x
+	x = &Node{
+		Key:   x.Key,
+		Value: x.Value,
+		left:  x.left,
+		right: y,
 	}
 
-	// Balanced
-	return z
+	y.height = t.findNodeHeight(y)
+	x.height = t.findNodeHeight(x)
+
+	return x
 }
 
-// Size returns the number of entries the tree is currently storing.
-func (t *BinaryTree) Size() int {
-	return int(atomic.LoadInt64(&t.added))
+func (t *BinaryTree) leftRotate(x *Node) *Node {
+	y := x.right
+	t2 := y.left
+
+	x = &Node{
+		Key:   x.Key,
+		Value: x.Value,
+		left:  x.left,
+		right: t2,
+	}
+
+	y = &Node{
+		Key:   y.Key,
+		Value: y.Value,
+		left:  x,
+		right: y.right,
+	}
+
+	x.height = t.findNodeHeight(x)
+	y.height = t.findNodeHeight(y)
+
+	return y
+}
+
+func (t *BinaryTree) balance(n *Node, key int64) *Node {
+	hl := t.findNodeHeight(n.left)
+	hr := t.findNodeHeight(n.right)
+	b := hl - hr
+
+	// Left Left
+	if b > 1 && key < n.left.Key {
+		return t.rightRotate(n)
+	}
+
+	// Right Right
+	if b < -1 && key > n.right.Key {
+		return t.leftRotate(n)
+	}
+
+	// Left Right
+	if b > 1 && key > n.left.Key {
+		n.left = t.leftRotate(n.left)
+		return t.rightRotate(n)
+	}
+
+	// Right Left
+	if b < -1 && key < n.right.Key {
+
+		// Check to see if we just dropped the left most node (without
+		// balancing)
+		if n.left == nil || n.right.left == nil {
+			return n
+		}
+
+		n.right = t.rightRotate(n.right)
+		return t.leftRotate(n)
+	}
+
+	return n
+}
+
+// DropLeft removes the left most node. If the tree is empty, then it is a
+// nop. This can only be called on the same go-routine as the Insert
+// go-routine. It can be called in parallel with consumers.
+func (t *BinaryTree) DropLeft() {
+	s := *(*Stat)(atomic.LoadPointer(&t.stats))
+	s.Dropped++
+	atomic.StorePointer(&t.stats, unsafe.Pointer(&s))
+
+	r := t.dropLeft((*Node)(t.root))
+	atomic.StorePointer(&t.root, unsafe.Pointer(r))
+}
+
+func (t *BinaryTree) dropLeft(n *Node) *Node {
+	if n == nil {
+		return nil
+	}
+
+	if n.left == nil {
+		// Found left most node
+		return n.right
+	}
+
+	n = &Node{
+		Key:   n.Key,
+		Value: n.Value,
+		left:  t.dropLeft(n.left),
+		right: n.right,
+	}
+
+	n.height = t.findNodeHeight(n)
+
+	return n
 }
 
 func (t *BinaryTree) findNodeHeight(n *Node) int {
@@ -255,6 +271,7 @@ func Traverse(n *Node, f func(key int64, value interface{}) (keepGoing bool)) bo
 	if !Traverse(n.Left(), f) {
 		return false
 	}
+
 	if !f(n.Key, n.Value) {
 		return false
 	}
