@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	tree "github.com/apoydence/go-binarytree"
+	tree "github.com/poy/go-binarytree"
 )
 
 func BenchmarkTree(b *testing.B) {
